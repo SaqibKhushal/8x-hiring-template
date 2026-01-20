@@ -7,6 +7,18 @@ export type Json =
   | { [key: string]: Json | undefined }
   | Json[]
 
+export type SubscriptionTier = 'free' | 'pro';
+
+export interface Profile {
+  id: string;
+  email: string;
+  full_name: string | null;
+  subscription_tier: SubscriptionTier;
+  credits_remaining: number;
+  created_at: string;
+  updated_at: string;
+}
+
 export interface Database {
   public: {
     Tables: {

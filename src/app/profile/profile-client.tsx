@@ -25,9 +25,10 @@ interface ProfileClientProps {
     id: string
     email: string
   }
+  profile: any | null
 }
 
-export function ProfileClient({ user }: ProfileClientProps) {
+export function ProfileClient({ user, profile }: ProfileClientProps) {
   const { isPro, tier, downgradeToFree, refresh } = useSubscription()
   const [isDeleting, setIsDeleting] = useState(false)
   const [isLoggingOut, setIsLoggingOut] = useState(false)

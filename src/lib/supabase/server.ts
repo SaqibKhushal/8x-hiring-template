@@ -28,3 +28,6 @@ export async function getSupabaseServer() {
     }
   )
 }
+
+// Export as createClient for compatibility
+export const createClient = getSupabaseServer
