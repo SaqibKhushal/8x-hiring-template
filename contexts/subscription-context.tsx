@@ -1,154 +1,126 @@
-"use client"
+'use client'
 
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from "react"
-import { supabase } from "@/lib/supabase/client"
+import { createContext, useContext, useEffect, useState, ReactNode } from 'react'
+import { useAuth } from './auth-context'
+import { supabase } from '@/lib/supabase/client'
 
-export type Tier = "free" | "pro"
+type SubscriptionTier = 'free' | 'pro'
 
-export type Subscription = {
-  id: string
-  user_id: string
-  tier: Tier
-  created_at: string
-  updated_at: string
+interface ProfileData {
+  subscription_tier: SubscriptionTier | null
+  credits_remaining: number | null
 }
 
-type SubscriptionContextType = {
-  subscription: Subscription | null
-  isLoading: boolean
-  isPro: boolean
-  tier: Tier
+interface SubscriptionContextType {
+  tier: SubscriptionTier
+  creditsRemaining: number
+  loading: boolean
+  refreshSubscription: () => Promise<void>
+  canGenerate: boolean
   upgradeToPro: () => Promise<void>
-  downgradeToFree: () => Promise<void>
-  refresh: () => Promise<void>
+  resetToFree: () => Promise<void>
 }
 
-const SubscriptionContext = createContext<SubscriptionContextType>({
-  subscription: null,
-  isLoading: true,
-  isPro: false,
-  tier: "free",
-  upgradeToPro: async () => {},
-  downgradeToFree: async () => {},
-  refresh: async () => {},
-})
+const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined)
 
 export function SubscriptionProvider({ children }: { children: ReactNode }) {
-  const [subscription, setSubscription] = useState<Subscription | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
+  const { user, profile } = useAuth()
+  const [tier, setTier] = useState<SubscriptionTier>('free')
+  const [creditsRemaining, setCreditsRemaining] = useState(0)
+  const [loading, setLoading] = useState(true)
 
-  const fetchSubscription = useCallback(async () => {
+  const refreshSubscription = async () => {
+    if (!user) {
+      setTier('free')
+      setCreditsRemaining(0)
+      setLoading(false)
+      return
+    }
+
     try {
-      const { data: { user } } = await supabase.auth.getUser()
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('subscription_tier, credits_remaining')
+        .eq('id', user.id)
+        .single<ProfileData>()
 
-      if (!user) {
-        setSubscription(null)
-        setIsLoading(false)
+      if (error) {
+        console.error('Error fetching subscription:', error)
+        setLoading(false)
         return
       }
 
-      // Try to get existing subscription
-      const { data, error } = await supabase
-        .from("subscriptions")
-        .select("*")
-        .eq("user_id", user.id)
-        .single()
-
-      if (error && error.code !== "PGRST116") {
-        // PGRST116 = no rows returned (user doesn't have subscription yet)
-        console.error("[SubscriptionContext] Fetch error:", error)
-      }
-
       if (data) {
-        setSubscription(data as Subscription)
-      } else {
-        // Create default free subscription for new users
-        const { data: newSub, error: insertError } = await supabase
-          .from("subscriptions")
-          .insert({ user_id: user.id, tier: "free" })
-          .select()
-          .single()
-
-        if (insertError) {
-          console.error("[SubscriptionContext] Insert error:", insertError)
-        } else {
-          setSubscription(newSub as Subscription)
-        }
+        setTier((data.subscription_tier || 'free') as SubscriptionTier)
+        setCreditsRemaining(data.credits_remaining || 0)
       }
-
-      setIsLoading(false)
     } catch (error) {
-      console.error("[SubscriptionContext] Fetch error:", error)
-      setSubscription(null)
-      setIsLoading(false)
+      console.error('Error fetching subscription:', error)
+    } finally {
+      setLoading(false)
     }
-  }, [])
+  }
 
-  const refresh = useCallback(async () => {
-    setIsLoading(true)
-    await fetchSubscription()
-  }, [fetchSubscription])
-
-  const upgradeToPro = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser()
+  const upgradeToPro = async () => {
     if (!user) return
 
-    const { error } = await supabase
-      .from("subscriptions")
-      .update({ tier: "pro" })
-      .eq("user_id", user.id)
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          subscription_tier: 'pro' as const,
+          credits_remaining: 999
+        })
+        .eq('id', user.id)
 
-    if (error) {
-      console.error("[SubscriptionContext] Upgrade error:", error)
+      if (error) throw error
+
+      await refreshSubscription()
+    } catch (error) {
+      console.error('Error upgrading to pro:', error)
       throw error
     }
+  }
 
-    await refresh()
-  }, [refresh])
-
-  const downgradeToFree = useCallback(async () => {
-    const { data: { user } } = await supabase.auth.getUser()
+  const resetToFree = async () => {
     if (!user) return
 
-    const { error } = await supabase
-      .from("subscriptions")
-      .update({ tier: "free" })
-      .eq("user_id", user.id)
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({
+          subscription_tier: 'free' as const,
+          credits_remaining: 10
+        })
+        .eq('id', user.id)
 
-    if (error) {
-      console.error("[SubscriptionContext] Downgrade error:", error)
+      if (error) throw error
+
+      await refreshSubscription()
+    } catch (error) {
+      console.error('Error resetting to free:', error)
       throw error
     }
-
-    await refresh()
-  }, [refresh])
+  }
 
   useEffect(() => {
-    fetchSubscription()
+    refreshSubscription()
+  }, [user, profile])
 
-    // Listen for auth changes
-    const { data: { subscription: authSubscription } } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
-        if (session?.user) {
-          await fetchSubscription()
-        } else {
-          setSubscription(null)
-          setIsLoading(false)
-        }
-      }
-    )
+  const canGenerate = tier === 'pro' || creditsRemaining > 0
 
-    return () => {
-      authSubscription.unsubscribe()
-    }
-  }, [fetchSubscription])
-
-  // Compute derived values
-  const isPro = subscription?.tier === "pro"
-  const tier = subscription?.tier ?? "free"
+  const value = {
+    tier,
+    creditsRemaining,
+    loading,
+    refreshSubscription,
+    canGenerate,
+    upgradeToPro,
+    resetToFree,
+  }
 
   return (
-    <SubscriptionContext.Provider value={{ subscription, isLoading, isPro, tier, upgradeToPro, downgradeToFree, refresh }}>
+    <SubscriptionContext.Provider value={value}>
       {children}
     </SubscriptionContext.Provider>
   )
@@ -156,8 +128,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
 
 export function useSubscription() {
   const context = useContext(SubscriptionContext)
-  if (!context) {
-    throw new Error("useSubscription must be used within a SubscriptionProvider")
+  if (context === undefined) {
+    throw new Error('useSubscription must be used within a SubscriptionProvider')
   }
   return context
 }

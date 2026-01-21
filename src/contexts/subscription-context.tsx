@@ -5,17 +5,14 @@ import { useAuth } from './auth-context'
 import { supabase } from '@/lib/supabase/client'
 import type { SubscriptionTier } from '@/types/database'
 
-interface ProfileData {
-  subscription_tier: SubscriptionTier
-  credits_remaining: number
-}
-
 interface SubscriptionContextType {
   tier: SubscriptionTier
   creditsRemaining: number
   loading: boolean
   refreshSubscription: () => Promise<void>
   canGenerate: boolean
+  upgradeToPro: () => Promise<void>
+  resetToFree: () => Promise<void>
 }
 
 const SubscriptionContext = createContext<SubscriptionContextType | undefined>(undefined)
@@ -39,7 +36,7 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
         .from('profiles')
         .select('subscription_tier, credits_remaining')
         .eq('id', user.id)
-        .single<ProfileData>()
+        .single()
 
       if (error) throw error
 
@@ -51,6 +48,48 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
       console.error('Error fetching subscription:', error)
     } finally {
       setLoading(false)
+    }
+  }
+
+  const upgradeToPro = async () => {
+    if (!user) return
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ 
+          subscription_tier: 'pro',
+          credits_remaining: 999 
+        })
+        .eq('id', user.id)
+
+      if (error) throw error
+
+      await refreshSubscription()
+    } catch (error) {
+      console.error('Error upgrading to pro:', error)
+      throw error
+    }
+  }
+
+  const resetToFree = async () => {
+    if (!user) return
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ 
+          subscription_tier: 'free',
+          credits_remaining: 10 
+        })
+        .eq('id', user.id)
+
+      if (error) throw error
+
+      await refreshSubscription()
+    } catch (error) {
+      console.error('Error resetting to free:', error)
+      throw error
     }
   }
 
@@ -66,6 +105,8 @@ export function SubscriptionProvider({ children }: { children: ReactNode }) {
     loading,
     refreshSubscription,
     canGenerate,
+    upgradeToPro,
+    resetToFree,
   }
 
   return (

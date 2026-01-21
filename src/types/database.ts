@@ -51,6 +51,29 @@ export interface Database {
           updated_at?: string
         }
       }
+      subscriptions: {
+        Row: {
+          id: string
+          user_id: string
+          tier: 'free' | 'pro'
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          user_id: string
+          tier?: 'free' | 'pro'
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          user_id?: string
+          tier?: 'free' | 'pro'
+          created_at?: string
+          updated_at?: string
+        }
+      }
       generations: {
         Row: {
           id: string
