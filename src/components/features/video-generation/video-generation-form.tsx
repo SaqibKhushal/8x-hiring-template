@@ -191,7 +191,7 @@ export function VideoGenerationForm() {
       <div className="mb-6">
         <div className="flex items-center gap-2 mb-3">
           <Label className="text-white">Describe your video</Label>
-          <span className="text-primary">🔥</span>
+          <span className="text-primary"></span>
         </div>
         <textarea
           value={formData.prompt}
